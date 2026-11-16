@@ -1,0 +1,62 @@
+name: Build RENT VPN APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'RENT_VPN_vless_fixed.zip'
+      - '.github/workflows/build-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check project archive
+        run: |
+          test -f RENT_VPN_vless_fixed.zip || {
+            echo "Upload RENT_VPN_vless_fixed.zip to the repository root first."
+            exit 1
+          }
+          unzip -q RENT_VPN_vless_fixed.zip
+          test -f RentVPN/app/build.gradle.kts
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Download Xray engine
+        working-directory: RentVPN
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p app/libs
+          gh release download -R 2dust/AndroidLibXrayLite -p '*.aar' -D app/libs --clobber
+          ls -la app/libs
+          for f in app/libs/*.aar; do
+            if [ "$f" != "app/libs/libv2ray.aar" ]; then
+              mv "$f" app/libs/libv2ray.aar
+            fi
+          done
+          test -f app/libs/libv2ray.aar
+
+      - name: Build debug APK
+        working-directory: RentVPN
+        run: gradle :app:assembleDebug --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RENT-VPN-debug-apk
+          path: RentVPN/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
